@@ -177,7 +177,8 @@ async def callback_start_session(callback: CallbackQuery, state: FSMContext):
         "• Лицо четко видно\n"
         "• Без фильтров и масок\n\n"
         "Загружай фото по одному или несколько сразу 👇",
-        reply_markup=get_photo_upload_keyboard()
+        reply_markup=get_photo_upload_keyboard(),
+        parse_mode="HTML"
     )
     
     await state.set_state(PhotoSessionStates.waiting_for_photos)
@@ -211,7 +212,7 @@ async def callback_show_examples(callback: CallbackQuery):
         callback_data="back_to_start"
     ))
     
-    await callback.message.edit_text(examples_text, reply_markup=keyboard.as_markup())
+    await callback.message.edit_text(examples_text, reply_markup=keyboard.as_markup(), parse_mode="HTML")
 
 
 async def callback_show_prices(callback: CallbackQuery):
@@ -273,7 +274,7 @@ async def callback_show_prices(callback: CallbackQuery):
     ))
     keyboard.adjust(1)
     
-    await callback.message.edit_text(prices_text, reply_markup=keyboard.as_markup())
+    await callback.message.edit_text(prices_text, reply_markup=keyboard.as_markup(), parse_mode="HTML")
 
 
 async def callback_select_package(callback: CallbackQuery, state: FSMContext):
@@ -322,7 +323,7 @@ async def callback_select_package(callback: CallbackQuery, state: FSMContext):
     ))
     keyboard.adjust(1)
     
-    await callback.message.edit_text(confirmation_text, reply_markup=keyboard.as_markup())
+    await callback.message.edit_text(confirmation_text, reply_markup=keyboard.as_markup(), parse_mode="HTML")
     await state.set_state(PhotoSessionStates.package_selection)
 
 
@@ -359,7 +360,7 @@ async def callback_show_new_styles(callback: CallbackQuery):
         callback_data="show_prices"
     ))
     
-    await callback.message.edit_text(styles_text, reply_markup=keyboard.as_markup())
+    await callback.message.edit_text(styles_text, reply_markup=keyboard.as_markup(), parse_mode="HTML")
 
 
 async def callback_start_photo_upload(callback: CallbackQuery, state: FSMContext):
@@ -396,7 +397,7 @@ async def callback_start_photo_upload(callback: CallbackQuery, state: FSMContext
         callback_data="cancel_session"
     ))
     
-    await callback.message.edit_text(upload_text, reply_markup=keyboard.as_markup())
+    await callback.message.edit_text(upload_text, reply_markup=keyboard.as_markup(), parse_mode="HTML")
     await state.set_state(PhotoSessionStates.waiting_for_photos)
 
 
