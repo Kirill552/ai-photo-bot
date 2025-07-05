@@ -183,6 +183,45 @@ class YandexObjectStorage:
         
         return results
     
+    def upload_file(self, file_path: str, key: str, content_type: str = None) -> str:
+        """
+        Загружает файл с диска в Object Storage (синхронно)
+        
+        Args:
+            file_path: путь к файлу на диске
+            key: ключ объекта в хранилище
+            content_type: MIME тип файла (автоопределение по расширению)
+            
+        Returns:
+            URL загруженного файла
+        """
+        
+        try:
+            # Автоопределение content_type
+            if content_type is None:
+                if key.lower().endswith('.jpg') or key.lower().endswith('.jpeg'):
+                    content_type = 'image/jpeg'
+                elif key.lower().endswith('.png'):
+                    content_type = 'image/png'
+                elif key.lower().endswith('.zip'):
+                    content_type = 'application/zip'
+                else:
+                    content_type = 'application/octet-stream'
+            
+            # Загружаем файл синхронно
+            result = self._upload_file_sync(file_path, key, content_type)
+            
+            if result['success']:
+                logger.info(f"✅ File uploaded successfully: {key}")
+                return result['url']
+            else:
+                logger.error(f"❌ File upload failed: {result['error']}")
+                raise Exception(f"Upload failed: {result['error']}")
+                
+        except Exception as e:
+            logger.error(f"❌ Upload file error for {key}: {str(e)}")
+            raise e
+    
     async def delete_session_files(self, session_id: str) -> Dict[str, Any]:
         """
         Удаляет все файлы сессии

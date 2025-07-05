@@ -9,7 +9,7 @@ import httpx
 import asyncio
 
 from .image_generator import ImageGenerator
-from .storage import YandexCloudStorage
+from .storage import YandexObjectStorage
 from .prompts import PromptGenerator
 from .utils import create_image_album, optimize_image
 from .config import settings
@@ -123,7 +123,7 @@ def upload_to_storage(user_id: int, session_id: str, image_urls: List[str], brie
     
     try:
         # Initialize storage
-        storage = YandexCloudStorage()
+        storage = YandexObjectStorage()
         
         # Download and optimize images
         local_images = []
