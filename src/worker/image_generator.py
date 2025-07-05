@@ -305,7 +305,7 @@ class SyncImageGenerator:
     
     def __init__(self, generator_type: str):
         self.generator_type = generator_type
-        self.api_key = settings.PIAPI_API_KEY
+        self.api_key = settings.PIAPI_KEY
     
     def generate_image(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Синхронная генерация изображения"""

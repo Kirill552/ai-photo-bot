@@ -16,7 +16,7 @@ class WorkerSettings(BaseSettings):
     YC_MQ_QUEUE_NAME: str = Field(default="jobs", env="YC_MQ_QUEUE_NAME", description="Queue name for jobs")
     
     # PiAPI
-    PIAPI_API_KEY: str = Field(..., env="PIAPI_KEY")
+    PIAPI_KEY: str = Field(..., env="PIAPI_KEY")
     PIAPI_BASE_URL: str = Field(default="https://api.piapi.ai", env="PIAPI_BASE_URL")
     
     # Yandex Object Storage

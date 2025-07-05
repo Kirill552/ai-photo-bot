@@ -130,8 +130,8 @@ def main():
         if not settings.YC_MQ_URL:
             raise ValueError("YC_MQ_URL is required")
         
-        if not settings.PIAPI_API_KEY:
-            raise ValueError("PIAPI_API_KEY is required")
+        if not settings.PIAPI_KEY:
+            raise ValueError("PIAPI_KEY is required")
         
         # Проверяем здоровье компонентов
         logger.info("🏥 Checking worker health...")
