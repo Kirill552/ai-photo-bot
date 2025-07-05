@@ -1,45 +1,27 @@
 """
-Celery tasks for image processing
+Image processing tasks for Yandex Message Queue
 """
 
 import os
 import logging
 from typing import Dict, Any, List
-from celery import Task
-from celery.exceptions import Retry
+import httpx
+import asyncio
 
-from .celery_app import app
 from .image_generator import ImageGenerator
 from .storage import YandexCloudStorage
 from .prompts import PromptGenerator
 from .utils import create_image_album, optimize_image
-from .config import WorkerConfig
+from .config import settings
+from .notifications import TelegramNotifier
 
 logger = logging.getLogger(__name__)
-config = WorkerConfig()
 
 
-class BaseTask(Task):
-    """Base task with error handling"""
+def process_image_generation_task(task_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Process image generation task from YC Message Queue"""
     
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
-        """Handle task failure"""
-        logger.error(f"Task {task_id} failed: {exc}")
-        
-        # Notify user about failure
-        try:
-            user_id = kwargs.get('user_id') or args[0].get('user_id')
-            if user_id:
-                notify_user_error.delay(user_id, str(exc))
-        except Exception as e:
-            logger.error(f"Failed to notify user about error: {e}")
-
-
-@app.task(bind=True, base=BaseTask, name='worker.tasks.generate_images')
-def generate_images(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate images based on brief"""
-    
-    logger.info(f"Starting image generation task: {task_data}")
+    logger.info(f"🎨 Starting image generation task: {task_data}")
     
     try:
         # Extract data
@@ -49,22 +31,12 @@ def generate_images(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
         photos = task_data['photos']
         
         # Initialize components
-        image_generator = ImageGenerator(
-            piapi_key=config.PIAPI_KEY,
-            openai_key=config.OPENAI_KEY
-        )
-        
+        image_generator = ImageGenerator('flux')
         prompt_generator = PromptGenerator()
         
         # Generate prompts based on brief
         prompts = prompt_generator.generate_prompts(brief)
-        logger.info(f"Generated {len(prompts)} prompts for user {user_id}")
-        
-        # Update task state
-        self.update_state(
-            state='PROGRESS',
-            meta={'current': 0, 'total': len(prompts), 'status': 'Generating images...'}
-        )
+        logger.info(f"📝 Generated {len(prompts)} prompts for user {user_id}")
         
         # Generate images
         generated_images = []
@@ -87,55 +59,71 @@ def generate_images(self, task_data: Dict[str, Any]) -> Dict[str, Any]:
                 
                 generated_images.extend(image_urls)
                 
-                # Update progress
-                self.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'current': i + 1,
-                        'total': len(prompts),
-                        'status': f'Generated {len(generated_images)} images...'
-                    }
-                )
+                logger.info(f"✨ Generated {len(image_urls)} images for prompt {i+1}")
                 
             except Exception as e:
-                logger.error(f"Error generating image {i}: {e}")
+                logger.error(f"❌ Error generating image {i}: {e}")
                 continue
         
-        logger.info(f"Generated {len(generated_images)} images for user {user_id}")
+        logger.info(f"🎉 Generated {len(generated_images)} total images for user {user_id}")
         
-        # Start upload to storage
-        upload_task = upload_to_storage.delay(
+        # Upload to storage
+        upload_result = upload_to_storage(
             user_id=user_id,
             session_id=session_id,
             image_urls=generated_images,
             brief=brief
         )
         
+        # Check if video generation is needed
+        if brief.get('package_type') in ['standard', 'premium'] and brief.get('enable_video', False):
+            # Generate video from best image
+            if upload_result.get('uploaded_urls'):
+                video_result = generate_video(
+                    user_id=user_id,
+                    session_id=session_id,
+                    best_image_url=upload_result['uploaded_urls'][0],
+                    brief=brief
+                )
+                upload_result['video_url'] = video_result.get('video_url')
+        
+        # Post-process for premium package
+        if brief.get('package_type') == 'premium' and brief.get('enable_post_process', False):
+            if upload_result.get('uploaded_urls'):
+                post_process_result = post_process_images(
+                    user_id=user_id,
+                    session_id=session_id,
+                    image_paths=upload_result['uploaded_urls'],
+                    brief=brief
+                )
+                upload_result['post_processed_urls'] = post_process_result.get('processed_urls')
+        
+        # Notify user about success
+        notify_user_success(user_id, upload_result)
+        
         return {
-            'status': 'success',
+            'success': True,
             'images_generated': len(generated_images),
-            'upload_task_id': upload_task.id
+            'result': upload_result
         }
         
     except Exception as e:
-        logger.error(f"Error in generate_images task: {e}")
-        raise self.retry(exc=e, countdown=60, max_retries=3)
+        logger.error(f"❌ Error in process_image_generation_task: {e}")
+        notify_user_error(user_id, str(e))
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 
-@app.task(bind=True, base=BaseTask, name='worker.tasks.upload_to_storage')
-def upload_to_storage(self, user_id: int, session_id: str, image_urls: List[str], brief: Dict[str, Any]) -> Dict[str, Any]:
+def upload_to_storage(user_id: int, session_id: str, image_urls: List[str], brief: Dict[str, Any]) -> Dict[str, Any]:
     """Upload images to Yandex Cloud Storage"""
     
-    logger.info(f"Starting storage upload for user {user_id}")
+    logger.info(f"☁️ Starting storage upload for user {user_id}")
     
     try:
         # Initialize storage
-        storage = YandexCloudStorage(
-            access_key=config.YC_ACCESS_KEY,
-            secret_key=config.YC_SECRET_KEY,
-            bucket_name=config.YC_BUCKET_NAME,
-            endpoint_url=config.YC_ENDPOINT
-        )
+        storage = YandexCloudStorage()
         
         # Download and optimize images
         local_images = []
@@ -146,7 +134,6 @@ def upload_to_storage(self, user_id: int, session_id: str, image_urls: List[str]
                 os.makedirs(os.path.dirname(local_path), exist_ok=True)
                 
                 # Download from URL
-                import httpx
                 with httpx.stream('GET', url) as response:
                     response.raise_for_status()
                     with open(local_path, 'wb') as f:
@@ -157,18 +144,10 @@ def upload_to_storage(self, user_id: int, session_id: str, image_urls: List[str]
                 optimized_path = optimize_image(local_path)
                 local_images.append(optimized_path)
                 
-                # Update progress
-                self.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'current': i + 1,
-                        'total': len(image_urls),
-                        'status': f'Downloaded {i + 1} images...'
-                    }
-                )
+                logger.info(f"⬇️ Downloaded image {i + 1}/{len(image_urls)}")
                 
             except Exception as e:
-                logger.error(f"Error downloading image {i}: {e}")
+                logger.error(f"❌ Error downloading image {i}: {e}")
                 continue
         
         # Upload to storage
@@ -180,238 +159,185 @@ def upload_to_storage(self, user_id: int, session_id: str, image_urls: List[str]
                 url = storage.upload_file(local_path, key)
                 uploaded_urls.append(url)
                 
-                # Update progress
-                self.update_state(
-                    state='PROGRESS',
-                    meta={
-                        'current': i + 1,
-                        'total': len(local_images),
-                        'status': f'Uploaded {i + 1} images...'
-                    }
-                )
+                logger.info(f"⬆️ Uploaded image {i + 1}/{len(local_images)}")
                 
             except Exception as e:
-                logger.error(f"Error uploading image {i}: {e}")
+                logger.error(f"❌ Error uploading image {i}: {e}")
                 continue
         
         # Create album/zip if needed
+        album_url = None
         if len(uploaded_urls) > 50:
             # Create zip archive for large collections
             zip_path = create_image_album(local_images, session_id)
-            zip_key = f"sessions/{session_id}/album.zip"
-            zip_url = storage.upload_file(zip_path, zip_key)
-            
-            result = {
-                'status': 'success',
-                'delivery_type': 'zip',
-                'zip_url': zip_url,
-                'images_count': len(uploaded_urls)
-            }
-        else:
-            # Send as media group
-            result = {
-                'status': 'success',
-                'delivery_type': 'media_group',
-                'image_urls': uploaded_urls[:50],  # Telegram limit
-                'images_count': len(uploaded_urls)
-            }
+            if zip_path:
+                album_key = f"sessions/{session_id}/album.zip"
+                album_url = storage.upload_file(zip_path, album_key)
         
-        # Cleanup local files
-        for path in local_images:
-            try:
-                os.remove(path)
-            except Exception as e:
-                logger.warning(f"Failed to cleanup file {path}: {e}")
+        logger.info(f"✅ Upload complete: {len(uploaded_urls)} images uploaded")
         
-        # Notify user
-        notify_user_success.delay(user_id, result)
-        
-        return result
+        return {
+            'success': True,
+            'uploaded_urls': uploaded_urls,
+            'album_url': album_url,
+            'total_images': len(uploaded_urls)
+        }
         
     except Exception as e:
-        logger.error(f"Error in upload_to_storage task: {e}")
-        raise self.retry(exc=e, countdown=60, max_retries=3)
+        logger.error(f"❌ Error in upload_to_storage: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
 
 
-@app.task(bind=True, base=BaseTask, name='worker.tasks.notify_user')
-def notify_user_success(self, user_id: int, result: Dict[str, Any]) -> bool:
-    """Notify user about successful completion"""
+def notify_user_success(user_id: int, result: Dict[str, Any]) -> bool:
+    """Notify user about successful generation"""
     
     try:
-        # Import here to avoid circular imports
-        from .notifications import TelegramNotifier
+        notifier = TelegramNotifier(settings.BOT_TOKEN)
         
-        notifier = TelegramNotifier(config.BOT_TOKEN)
+        total_images = result.get('total_images', 0)
+        album_url = result.get('album_url')
+        video_url = result.get('video_url')
+        post_processed_urls = result.get('post_processed_urls', [])
         
-        if result['delivery_type'] == 'zip':
-            message = f"🎉 Твоя фотосессия готова!\n\n" \
-                     f"📸 Сгенерировано: {result['images_count']} фотографий\n" \
-                     f"📁 Скачать альбом: {result['zip_url']}"
-        else:
-            message = f"🎉 Твоя фотосессия готова!\n\n" \
-                     f"📸 Сгенерировано: {result['images_count']} фотографий\n" \
-                     f"Отправляю фото..."
+        message = f"🎉 Ваша фотосессия готова!\n\n"
+        message += f"📸 Создано изображений: {total_images}\n"
         
-        # Send notification
-        notifier.send_message(user_id, message)
+        if video_url:
+            message += f"🎬 Видео создано\n"
+            
+        if post_processed_urls:
+            message += f"✨ Применена премиум обработка\n"
+            
+        if album_url:
+            message += f"\n📁 Скачать архив: {album_url}"
         
-        # Send media group if needed
-        if result['delivery_type'] == 'media_group':
-            notifier.send_media_group(user_id, result['image_urls'])
-        
-        return True
+        return notifier.send_message(user_id, message)
         
     except Exception as e:
-        logger.error(f"Error notifying user {user_id}: {e}")
+        logger.error(f"❌ Error notifying user {user_id}: {e}")
         return False
 
 
-@app.task(bind=True, base=BaseTask, name='worker.tasks.notify_user_error')
-def notify_user_error(self, user_id: int, error_message: str) -> bool:
+def notify_user_error(user_id: int, error_message: str) -> bool:
     """Notify user about error"""
     
     try:
-        from .notifications import TelegramNotifier
+        notifier = TelegramNotifier(settings.BOT_TOKEN)
         
-        notifier = TelegramNotifier(config.BOT_TOKEN)
+        message = f"❌ Произошла ошибка при создании фотосессии:\n\n{error_message}\n\n"
+        message += "Попробуйте еще раз или обратитесь в поддержку."
         
-        message = f"❌ Произошла ошибка при генерации фотографий.\n\n" \
-                 f"Попробуй еще раз или обратись в поддержку.\n\n" \
-                 f"Код ошибки: {error_message[:100]}"
-        
-        notifier.send_message(user_id, message)
-        
-        return True
+        return notifier.send_message(user_id, message)
         
     except Exception as e:
-        logger.error(f"Error notifying user about error: {e}")
+        logger.error(f"❌ Error notifying user {user_id} about error: {e}")
         return False
 
 
-@app.task(bind=True, base=BaseTask, name='worker.tasks.generate_video')
-def generate_video(self, user_id: int, session_id: str, best_image_url: str, brief: Dict[str, Any]) -> Dict[str, Any]:
-    """Generate video for Standard/Premium packages"""
+def generate_video(user_id: int, session_id: str, best_image_url: str, brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate video from best image"""
     
-    logger.info(f"Starting video generation for user {user_id}")
+    logger.info(f"🎬 Starting video generation for user {user_id}")
     
     try:
-        # Import video generator
+        # Initialize video generator
         from .video_generator import VideoGenerator
-        video_gen = VideoGenerator(config.PIAPI_KEY)
+        video_generator = VideoGenerator()
         
-        # Check if video generation is needed
-        package_type = brief.get('package_type', 'basic')
-        if not video_gen.should_generate_video(package_type):
-            logger.info(f"Package {package_type} does not include video")
-            return {'status': 'skipped', 'reason': 'package_does_not_include_video'}
+        # Generate video
+        video_url = video_generator.generate_video(
+            image_url=best_image_url,
+            prompt=brief.get('video_prompt', ''),
+            duration=brief.get('video_duration', 6),
+            style=brief.get('style_code', 'RL-01')
+        )
         
-        # Generate videos based on package
-        video_count = video_gen.get_video_count(package_type)
-        style = brief.get('style', 'RL-01')
+        if video_url:
+            logger.info(f"✅ Video generated successfully for user {user_id}")
+            return {
+                'success': True,
+                'video_url': video_url
+            }
+        else:
+            logger.error(f"❌ Video generation failed for user {user_id}")
+            return {
+                'success': False,
+                'error': 'Video generation failed'
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Error in generate_video: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+def post_process_images(user_id: int, session_id: str, image_paths: List[str], brief: Dict[str, Any]) -> Dict[str, Any]:
+    """Post-process images for premium package"""
+    
+    logger.info(f"✨ Starting post-processing for user {user_id}")
+    
+    try:
+        # Initialize post-processor
+        from .post_processor import PostProcessor
+        post_processor = PostProcessor()
         
-        generated_videos = []
+        processed_urls = []
         
-        for i in range(video_count):
+        for i, image_path in enumerate(image_paths):
             try:
-                if i == 0 or package_type == "standard":
-                    # Generate short video
-                    import asyncio
-                    video_url = asyncio.run(video_gen.make_short_video(best_image_url, style, brief))
-                else:
-                    # Generate long video for premium
-                    import asyncio
-                    video_url = asyncio.run(video_gen.make_long_video(best_image_url, style, brief))
+                # Process image
+                processed_url = post_processor.process_image(
+                    image_url=image_path,
+                    session_id=session_id,
+                    settings={
+                        'nsfw_filter': True,
+                        'face_restoration': True,
+                        'upscale_4k': True,
+                        'color_enhancement': True
+                    }
+                )
                 
-                if video_url:
-                    generated_videos.append(video_url)
-                    
-                    # Update progress
-                    self.update_state(
-                        state='PROGRESS',
-                        meta={
-                            'current': i + 1,
-                            'total': video_count,
-                            'status': f'Generated {i + 1} videos...'
-                        }
-                    )
+                if processed_url:
+                    processed_urls.append(processed_url)
+                    logger.info(f"✅ Processed image {i + 1}/{len(image_paths)}")
                 
             except Exception as e:
-                logger.error(f"Error generating video {i}: {e}")
+                logger.error(f"❌ Error processing image {i}: {e}")
                 continue
         
-        logger.info(f"Generated {len(generated_videos)} videos for user {user_id}")
+        logger.info(f"✅ Post-processing complete: {len(processed_urls)} images processed")
         
         return {
-            'status': 'success',
-            'videos_generated': len(generated_videos),
-            'video_urls': generated_videos
+            'success': True,
+            'processed_urls': processed_urls,
+            'total_processed': len(processed_urls)
         }
         
     except Exception as e:
-        logger.error(f"Error in generate_video task: {e}")
-        raise self.retry(exc=e, countdown=60, max_retries=2)
-
-
-@app.task(bind=True, base=BaseTask, name='worker.tasks.post_process_images')
-def post_process_images(self, user_id: int, session_id: str, image_paths: List[str], brief: Dict[str, Any]) -> Dict[str, Any]:
-    """Post-process images for Premium packages"""
-    
-    logger.info(f"Starting post-processing for user {user_id}")
-    
-    try:
-        # Import post processor
-        from .post_processor import PostProcessor
-        post_proc = PostProcessor(config.PIAPI_KEY)
-        
-        # Check if post-processing is needed
-        package_type = brief.get('package_type', 'basic')
-        if package_type != 'premium':
-            logger.info(f"Package {package_type} does not include post-processing")
-            return {'status': 'skipped', 'reason': 'package_does_not_include_post_processing'}
-        
-        # Process images in batch
-        import asyncio
-        processed_paths = asyncio.run(post_proc.process_batch(image_paths, package_type))
-        
-        logger.info(f"Post-processed {len(processed_paths)} images for user {user_id}")
-        
+        logger.error(f"❌ Error in post_process_images: {e}")
         return {
-            'status': 'success',
-            'images_processed': len(processed_paths),
-            'processed_paths': processed_paths
+            'success': False,
+            'error': str(e)
         }
-        
-    except Exception as e:
-        logger.error(f"Error in post_process_images task: {e}")
-        raise self.retry(exc=e, countdown=60, max_retries=2)
 
 
-@app.task(name='worker.tasks.cleanup_old_files')
 def cleanup_old_files():
-    """Cleanup old temporary files"""
+    """Clean up old temporary files"""
+    
+    logger.info("🧹 Starting cleanup of old files")
     
     try:
-        import shutil
-        from datetime import datetime, timedelta
-        
         temp_dir = "/tmp/worker"
-        if not os.path.exists(temp_dir):
-            return
-        
-        # Delete directories older than 24 hours
-        cutoff_time = datetime.now() - timedelta(hours=24)
-        
-        for item in os.listdir(temp_dir):
-            item_path = os.path.join(temp_dir, item)
-            if os.path.isdir(item_path):
-                # Check modification time
-                mod_time = datetime.fromtimestamp(os.path.getmtime(item_path))
-                if mod_time < cutoff_time:
-                    shutil.rmtree(item_path)
-                    logger.info(f"Deleted old directory: {item_path}")
-        
-        return {"status": "success", "cleaned_up": True}
+        if os.path.exists(temp_dir):
+            import shutil
+            shutil.rmtree(temp_dir)
+            os.makedirs(temp_dir, exist_ok=True)
+            logger.info("✅ Cleanup completed")
         
     except Exception as e:
-        logger.error(f"Error in cleanup_old_files: {e}")
-        return {"status": "error", "message": str(e)} 
+        logger.error(f"❌ Error in cleanup: {e}") 
