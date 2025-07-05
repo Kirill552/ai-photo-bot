@@ -1,0 +1,65 @@
+version: '3.8'
+
+services:
+
+
+  # Telegram Bot
+  telegram-bot:
+    build:
+      context: ./src/bot
+      dockerfile: Dockerfile
+    container_name: telegram-bot
+    env_file:
+      - .env
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ASSISTANT_ID=${ASSISTANT_ID}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - YC_MQ_URL=${YC_MQ_URL}
+    expose:
+      - "8080"
+    mem_limit: "512m"
+    restart: unless-stopped
+    networks:
+      - backend
+    volumes:
+      - ./logs:/app/logs
+
+  # Image Processing Worker
+  image-worker:
+    build:
+      context: ./src/worker
+      dockerfile: Dockerfile
+    container_name: image-worker
+    env_file:
+      - .env
+    environment:
+      - YC_MQ_URL=${YC_MQ_URL}
+      - YC_MQ_QUEUE_NAME=${YC_MQ_QUEUE_NAME:-jobs}
+      - PIAPI_KEY=${PIAPI_KEY}
+      - PIAPI_BASE_URL=${PIAPI_BASE_URL}
+      - YC_ACCESS_KEY=${YC_ACCESS_KEY}
+      - YC_SECRET_KEY=${YC_SECRET_KEY}
+      - YC_BUCKET_NAME=${YC_BUCKET_NAME}
+      - YC_REGION=${YC_REGION}
+      - YC_ENDPOINT=${YC_ENDPOINT}
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-4}
+    mem_limit: "1g"
+    restart: unless-stopped
+    networks:
+      - backend
+    volumes:
+      - ./logs:/app/logs
+      - ./temp:/app/temp
+
+
+
+
+
+# No volumes needed for simplified architecture
+
+networks:
+  backend:
+    driver: bridge 

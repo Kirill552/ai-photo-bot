@@ -1,0 +1,48 @@
+# Main API endpoint - replace with your actual domain
+api.photobot.ai {
+    # Telegram webhook
+    handle /webhook {
+        reverse_proxy telegram-bot:8080 {
+            header_up Host {host}
+            header_up X-Real-IP {remote}
+            header_up X-Forwarded-For {remote}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+    
+    # Bot status endpoint  
+    handle /status {
+        reverse_proxy telegram-bot:8080
+    }
+    
+    # Health check endpoint
+    handle /health {
+        reverse_proxy telegram-bot:8080
+    }
+    
+    # Default response
+    respond "AI Photo Bot API" 200
+}
+
+# Development domain (optional)
+localhost:8000 {
+    handle /webhook {
+        reverse_proxy telegram-bot:8080
+    }
+    
+    handle /health {
+        reverse_proxy telegram-bot:8080
+    }
+    
+    respond "AI Photo Bot API (Dev)" 200
+}
+
+# Main website (future)
+photobot.ai {
+    respond "AI Photo Studio - Coming Soon" 200
+    
+    log {
+        output file /var/log/caddy/main.log
+        level INFO
+    }
+} 

@@ -1,0 +1,20 @@
+# Main dependencies
+aiogram==3.2.0
+openai
+aiohttp
+aiofiles
+python-dotenv
+pydantic
+pydantic-settings
+pillow
+boto3
+requests
+loguru
+httpx
+
+# Image processing
+opencv-python
+
+# Utils
+jinja2
+python-json-logger 

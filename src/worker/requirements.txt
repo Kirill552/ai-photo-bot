@@ -1,0 +1,25 @@
+# Core dependencies for worker
+httpx
+aiohttp
+boto3
+pillow
+opencv-python-headless
+numpy
+python-dotenv
+pydantic
+pydantic_settings
+loguru
+requests
+aiofiles
+
+# Video generation dependencies
+imageio
+imageio-ffmpeg
+ffmpeg-python
+
+# Post-processing dependencies
+scikit-image
+matplotlib
+
+# Performance optimization
+asyncio-throttle 

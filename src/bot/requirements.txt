@@ -1,0 +1,13 @@
+# Core dependencies
+aiogram==3.2.0
+openai
+aiohttp
+aiofiles
+python-dotenv
+pydantic
+boto3
+pillow
+opencv-python-headless
+numpy
+requests
+loguru 
