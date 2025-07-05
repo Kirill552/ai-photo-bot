@@ -1,284 +1,278 @@
-# Быстрый старт - AI Фотосессии
+# 🚀 Руководство по запуску AI Photo Bot v2025
 
-Пошаговая инструкция по запуску сервиса AI фотосессий.
+> **Новая архитектура v2025**: Используем Yandex Message Queue + Yandex Object Storage + PiAPI. 
+> Больше никаких Redis, Celery или OpenAI Proxy!
 
-## 📋 Предварительные требования
+## 📋 Системные требования
 
-### 1. Сервисы
-- **OpenAI API** - для работы Assistant
-- **PiAPI** - для генерации изображений
-- **Telegram Bot** - для интерфейса пользователя
-- **Yandex Cloud** - для хранения файлов
-- **VPS сервер** - для хостинга (Webdock, DigitalOcean, и др.)
+- **Docker & Docker Compose** 
+- **VPS/сервер** с минимум 2GB RAM
+- **Домен** (опционально)
 
-### 2. Получение ключей
+## 🔑 Необходимые API ключи
 
-#### OpenAI API
-1. Перейдите на [platform.openai.com](https://platform.openai.com)
-2. Создайте аккаунт и получите API ключ
-3. Пополните баланс (минимум $5)
-
-#### PiAPI
-1. Перейдите на [piapi.ai](https://piapi.ai)
-2. Зарегистрируйтесь и получите API ключ
-3. Пополните баланс для генерации изображений
-
-#### Telegram Bot
-1. Найдите [@BotFather](https://t.me/botfather) в Telegram
-2. Создайте нового бота командой `/newbot`
-3. Сохраните токен бота
-
-#### Yandex Cloud
-1. Зарегистрируйтесь в [Yandex Cloud](https://cloud.yandex.ru)
-2. Создайте сервисный аккаунт
-3. Создайте статический ключ доступа
-4. Создайте S3 bucket для хранения изображений
-
-## 🚀 Установка и настройка
-
-### 1. Клонирование проекта
-
+### 1. Telegram Bot Token
 ```bash
-git clone <repository-url>
-cd нейрофотограф
+# Создайте бота через @BotFather
+/newbot
+# Получите токен: 1234567890:ABCDefGhIjKlMnOpQrStUvWxYz
 ```
 
-### 2. Настройка переменных окружения
+### 2. OpenAI API Key  
+```bash
+# Зайдите на https://platform.openai.com/api-keys
+# Создайте новый ключ: sk-proj-...
+```
 
-Создайте файл `.env` с настройками:
+### 3. PiAPI Key
+```bash
+# Зарегистрируйтесь на https://piapi.ai/
+# Получите ключ в личном кабинете
+```
+
+### 4. Yandex Cloud
+```bash
+# Создайте Object Storage bucket
+# Создайте Message Queue
+# Создайте Service Account с ключами доступа
+```
+
+## ⚙️ Настройка переменных окружения
+
+Создайте файл `.env` на сервере:
 
 ```bash
-# OpenAI API
-OPENAI_KEY=sk-your-openai-key-here
-ASSISTANT_ID=  # Будет заполнено автоматически
+# Telegram Bot
+BOT_TOKEN=1234567890:ABCDefGhIjKlMnOpQrStUvWxYz
+
+# OpenAI
+OPENAI_API_KEY=sk-proj-...
+ASSISTANT_ID=asst_...
 
 # PiAPI
-PIAPI_KEY=your-piapi-key-here
+PIAPI_KEY=your-piapi-key
+PIAPI_BASE_URL=https://api.piapi.ai
 
-# Telegram Bot
-BOT_TOKEN=your-telegram-bot-token-here
+# Yandex Message Queue
+YC_MQ_URL=https://message-queue.api.cloud.yandex.net/...
+YC_MQ_QUEUE_NAME=ai-photo-jobs
 
-# Yandex Cloud
+# Yandex Object Storage  
 YC_ACCESS_KEY=your-access-key
 YC_SECRET_KEY=your-secret-key
-YC_OBJECT_BUCKET=your-bucket-name
+YC_BUCKET_NAME=ai-photos
 YC_REGION=ru-central1
 YC_ENDPOINT=https://storage.yandexcloud.net
 
-# Redis
-REDIS_URL=redis://redis:6379/0
+# Webhook (для Telegram)
+DOMAIN=your-domain.com  # или IP
+WEBHOOK_SECRET=your-generated-secret
+SECRET_KEY=your-app-secret
 
-# App settings
-DEBUG=True
+# Worker settings
+WORKER_CONCURRENCY=4
+DEBUG=false
 LOG_LEVEL=INFO
-RATE_LIMIT_RPS=15
-
-# Prices (in rubles)
-PRICE_40_PHOTOS=1099
-PRICE_100_PHOTOS=1799
-MARKETING_DISCOUNT=0.1
 ```
 
-### 3. Локальная разработка
+## 🎯 Быстрый старт
 
+### 1. Создание OpenAI Assistant
 ```bash
-# Установите Python зависимости
-pip install -r requirements.txt
-
-# Создайте OpenAI Assistant
+# Настройте OPENAI_API_KEY в .env
 python assistant_setup.py
-
-# Запустите сервисы через Docker
-docker-compose up -d
+# Скопируйте ASSISTANT_ID в .env
 ```
 
-### 4. Деплой на VPS
+### 2. Запуск через GitHub Actions (рекомендуется)
 
-#### Настройка VPS
+1. **Fork репозитория**
+2. **Настройте Secrets** в GitHub Settings → Secrets and variables → Actions:
+   ```
+   BOT_TOKEN
+   OPENAI_API_KEY  
+   ASSISTANT_ID
+   PIAPI_KEY
+   YC_MQ_URL
+   YC_ACCESS_KEY
+   YC_SECRET_KEY
+   YC_BUCKET_NAME
+   DOMAIN
+   WEBHOOK_SECRET
+   SECRET_KEY
+   ```
+
+3. **Пуш в main** - автоматический деплой на сервер!
+
+### 3. Ручной запуск на VPS
+
 ```bash
-# Подключитесь к VPS
-ssh root@your-vps-ip
+# Клонируйте репозиторий
+git clone https://github.com/YOUR_USERNAME/ai-photo-bot.git
+cd ai-photo-bot
 
-# Установите Docker
-curl -sSL https://get.docker.com | sh
-apt install docker-compose-plugin -y
-
-# Создайте директорию проекта
-mkdir -p /opt/ai-studio
-cd /opt/ai-studio
-```
-
-#### Загрузка проекта
-```bash
-# На локальной машине
-# Отредактируйте deploy.sh - укажите IP вашего VPS
-nano deploy.sh
-
-# Запустите деплой
-chmod +x deploy.sh
-./deploy.sh
-```
-
-#### Настройка на VPS
-```bash
-# На VPS создайте .env файл
-cd /opt/ai-studio
+# Создайте .env файл (см. выше)
 nano .env
-# Скопируйте настройки из локального .env
-
-# Создайте OpenAI Assistant
-python assistant_setup.py
 
 # Запустите сервисы
-docker-compose up -d
+docker compose up -d
 
 # Проверьте статус
-docker-compose ps
-docker-compose logs -f
+docker compose ps
 ```
 
-### 5. Настройка домена (опционально)
+## 🏗️ Архитектура v2025
 
-```bash
-# Настройте DNS записи
-# A-запись: api.photobot.ai -> IP вашего VPS
-# A-запись: photobot.ai -> IP вашего VPS
-
-# SSL сертификаты будут выданы автоматически через Caddy
 ```
+┌─────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│ Telegram    │    │ Yandex Message   │    │ Image Worker    │
+│ Bot         │───▶│ Queue            │───▶│ (Processing)    │
+│ (webhook)   │    │ (managed)        │    │                 │
+└─────────────┘    └──────────────────┘    └─────────────────┘
+                                                      │
+                   ┌──────────────────┐              │
+                   │ Yandex Object    │◀─────────────┘
+                   │ Storage          │
+                   │ (images)         │
+                   └──────────────────┘
+```
+
+**Компоненты:**
+- **telegram-bot**: Обрабатывает пользователей через webhook
+- **image-worker**: Обрабатывает задачи из очереди YC Message Queue
+- **Yandex Message Queue**: Управляемая очередь сообщений
+- **Yandex Object Storage**: Хранение изображений
 
 ## 🧪 Тестирование
 
-### 1. Проверка компонентов
-
+### 1. Проверка сервисов
 ```bash
-# Проверьте доступность сервисов
-curl http://your-vps-ip/health
-curl https://api.photobot.ai/health
+# Статус контейнеров
+docker compose ps
 
-# Проверьте OpenAI прокси
-curl https://api.photobot.ai/v1/models
+# Логи бота
+docker compose logs -f telegram-bot
 
-# Проверьте логи
-docker-compose logs telegram-bot
-docker-compose logs image-worker
-docker-compose logs openai-proxy
+# Логи worker
+docker compose logs -f image-worker
+
+# Здоровье worker
+docker compose exec image-worker python -c "from worker.health import check_health; print(check_health())"
 ```
 
 ### 2. Тестирование бота
-
-1. Найдите вашего бота в Telegram
-2. Отправьте команду `/start`
-3. Проследуйте инструкциям бота
-4. Загрузите тестовые фотографии
-5. Ответьте на вопросы ассистента
-6. Дождитесь генерации фотографий
+1. Найдите бота в Telegram
+2. Отправьте `/start`  
+3. Выберите пакет фотосессии
+4. Загрузите 10-15 селфи
+5. Опишите желаемый стиль
+6. Дождитесь генерации
 
 ## 📊 Мониторинг
 
-### Логи сервисов
+### Логи v2025
 ```bash
-# Все сервисы
-docker-compose logs -f
+# Все логи
+docker compose logs -f
 
-# Конкретный сервис
-docker-compose logs -f telegram-bot
-docker-compose logs -f image-worker
-docker-compose logs -f openai-proxy
+# Последние 50 строк
+docker compose logs --tail=50
+
+# Логи с временными метками
+docker compose logs -f -t
 ```
 
-### Метрики Redis
+### Проверка очереди
 ```bash
-# Подключитесь к Redis
-docker-compose exec redis redis-cli
-
-# Проверьте очереди
-KEYS *
-LLEN image_generation
+# Статистика YC Message Queue через консоль Yandex Cloud
+# https://console.cloud.yandex.ru/folders/your-folder-id/message-queue
 ```
 
-### Статус задач Celery
+### Проверка хранилища
 ```bash
-# Статус worker
-docker-compose exec image-worker celery -A worker.celery_app inspect active
-
-# Статистика
-docker-compose exec image-worker celery -A worker.celery_app inspect stats
+# Статистика Object Storage через консоль Yandex Cloud  
+# https://console.cloud.yandex.ru/folders/your-folder-id/storage
 ```
 
-## 🔧 Настройка под нагрузку
+## 🔧 Настройка производительности
 
-### Масштабирование workers
+### Worker масштабирование
 ```yaml
-# В docker-compose.yml
+# docker-compose.yml
 image-worker:
-  # ...
+  environment:
+    - WORKER_CONCURRENCY=8  # Увеличьте количество потоков
   deploy:
-    replicas: 4  # Увеличьте количество workers
+    replicas: 2  # Запустите несколько экземпляров
 ```
 
-### Оптимизация Redis
+### Webhook оптимизация
 ```bash
-# Настройте Redis для производства
-# Отредактируйте redis.conf
-docker-compose exec redis redis-cli CONFIG SET maxmemory 1gb
-docker-compose exec redis redis-cli CONFIG SET maxmemory-policy allkeys-lru
+# Используйте домен вместо IP для стабильной работы webhook
+DOMAIN=your-bot-domain.com
 ```
 
 ## 🛠️ Устранение неполадок
 
 ### Частые проблемы
 
-1. **Бот не отвечает**
-   - Проверьте токен бота в `.env`
-   - Проверьте логи: `docker-compose logs telegram-bot`
+**1. Бот не отвечает**
+```bash
+# Проверьте токен и webhook
+docker compose logs telegram-bot | grep -i error
+```
 
-2. **Ошибки генерации изображений**
-   - Проверьте ключ PiAPI
-   - Проверьте баланс PiAPI
-   - Проверьте логи: `docker-compose logs image-worker`
+**2. Worker падает**
+```bash
+# Проверьте API ключи
+docker compose logs image-worker | grep -i "validation\|error"
+```
 
-3. **Ошибки OpenAI Assistant**
-   - Проверьте ключ OpenAI
-   - Проверьте ASSISTANT_ID
-   - Запустите: `python assistant_setup.py`
+**3. Нет генерации изображений**
+```bash
+# Проверьте PiAPI баланс и ключ
+# Проверьте YC Message Queue конфигурацию
+```
 
-4. **Ошибки загрузки в хранилище**
-   - Проверьте ключи Yandex Cloud
-   - Проверьте права доступа к bucket
-   - Проверьте логи: `docker-compose logs image-worker`
+**4. Ошибки загрузки**
+```bash
+# Проверьте YC Object Storage права доступа
+# Проверьте что bucket создан и публично доступен для чтения
+```
 
 ### Команды диагностики
 ```bash
-# Проверка связности
-docker-compose exec telegram-bot ping redis
-docker-compose exec image-worker ping redis
+# Health check
+docker compose exec image-worker python -c "
+from worker.health import check_health
+result = check_health()
+print('✅ Healthy' if result.get('healthy') else f'❌ Error: {result.get(\"error\")}')
+"
+
+# Проверка конфигурации
+docker compose exec telegram-bot python -c "
+from bot.config import settings
+print(f'Bot token: {settings.BOT_TOKEN[:10]}...')
+print(f'YC MQ URL: {settings.YC_MQ_URL[:30]}...')
+"
 
 # Проверка дискового пространства
 df -h
 
-# Проверка памяти
-free -h
-
-# Перезапуск сервисов
-docker-compose restart
+# Использование памяти
+docker stats --no-stream
 ```
 
-## 📞 Поддержка
+## 🎉 Готово!
 
-При возникновении проблем:
+После запуска ваш AI Photo Bot v2025 готов к работе:
 
-1. Проверьте логи всех сервисов
-2. Убедитесь, что все ключи API действительны
-3. Проверьте настройки `.env`
-4. Перезапустите сервисы: `docker-compose restart`
+- ✅ **Современная архитектура** без Redis/Celery
+- ✅ **Managed сервисы** Yandex Cloud  
+- ✅ **Автоматическое масштабирование** через Message Queue
+- ✅ **Простота поддержки** - только 2 контейнера
 
-## 🎯 Следующие шаги
-
-После успешного запуска:
-
-1. Протестируйте полный цикл работы
-2. Настройте мониторинг и алерты
-3. Настройте автоматические бэкапы
-4. Создайте landing page для привлечения клиентов
-5. Настройте аналитику использования 
+**Полезные ссылки:**
+- Yandex Cloud Console: https://console.cloud.yandex.ru
+- PiAPI Dashboard: https://piapi.ai/dashboard  
+- OpenAI Platform: https://platform.openai.com 

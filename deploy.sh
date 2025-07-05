@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# 🚀 Automated Deployment Script for AI Photo Bot
+# 🚀 Automated Deployment Script for AI Photo Bot v2025
 # Запускается автоматически через GitHub Actions или вручную
 
 set -e
 
-echo "🚀 Starting deployment of AI Photo Bot..."
+echo "🚀 Starting deployment of AI Photo Bot v2025..."
 
 # Проверяем, что находимся в правильной папке
 if [ ! -f "docker-compose.yml" ]; then
@@ -17,7 +17,7 @@ echo "📁 Current directory: $(pwd)"
 
 # Проверяем наличие .env файла
 if [ ! -f ".env" ]; then
-    echo "❌ Error: .env file not found. Please create it from config.example"
+    echo "❌ Error: .env file not found. Please create it from environment variables"
     exit 1
 fi
 
@@ -47,28 +47,21 @@ sleep 30
 echo "🔍 Checking service status..."
 docker compose ps
 
-# Проверяем здоровье сервисов
-echo "❤️ Health check..."
-
-# Проверяем OpenAI Proxy
-if curl -f http://localhost:8000/health &>/dev/null; then
-    echo "✅ OpenAI Proxy is healthy"
-else
-    echo "❌ OpenAI Proxy health check failed"
-fi
-
-# Проверяем Redis
-if docker compose exec -T redis redis-cli ping &>/dev/null; then
-    echo "✅ Redis is healthy"
-else
-    echo "❌ Redis health check failed"
-fi
+# Проверяем здоровье сервисов v2025
+echo "❤️ Health check for v2025 architecture..."
 
 # Проверяем Telegram Bot
 if docker compose logs telegram-bot | grep -q "Bot started successfully" 2>/dev/null; then
     echo "✅ Telegram Bot is healthy"
 else
     echo "⚠️  Telegram Bot status unknown (check logs)"
+fi
+
+# Проверяем Image Worker
+if docker compose logs image-worker | grep -q "Worker initialized" 2>/dev/null; then
+    echo "✅ Image Worker is healthy"
+else
+    echo "⚠️  Image Worker status unknown (check logs)"
 fi
 
 # Показываем логи последних 50 строк
@@ -84,14 +77,18 @@ docker compose ps
 echo ""
 echo "🔗 Useful commands:"
 echo "  View logs: docker compose logs -f"
+echo "  Bot logs:  docker compose logs -f telegram-bot"
+echo "  Worker logs: docker compose logs -f image-worker"
 echo "  Restart:   docker compose restart"
 echo "  Stop:      docker compose down"
 echo "  Status:    docker compose ps"
 
 echo ""
-echo "🌐 Your bot should be available at:"
-echo "  - OpenAI Proxy: http://localhost:8000"
-echo "  - Health check: http://localhost:8000/health"
+echo "🎯 Architecture v2025:"
+echo "  - Telegram Bot: Handles user interactions"
+echo "  - Image Worker: Processes via Yandex Message Queue"
+echo "  - Storage: Yandex Object Storage"
+echo "  - Queue: Yandex Message Queue (managed)"
 
 echo ""
 echo "✅ Deployment script completed successfully!" 
